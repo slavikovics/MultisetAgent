@@ -134,6 +134,7 @@ ScAddr SetParser::CreateElementsInKnowledgeBase(std::vector<std::string> element
 {
   std::vector<std::string> alreadyCreatedValues;
   std::vector<ScAddr> alreadyCreatedNodes;
+  std::vector<std::string> nodesWithMultipleEntrances;
 
   ScAddr structNode = m_memoryCtx.CreateNode(ScType::NodeConstStruct);
   SC_LOG_DEBUG("SetParser: created struct node.");
@@ -148,6 +149,8 @@ ScAddr SetParser::CreateElementsInKnowledgeBase(std::vector<std::string> element
   ScAddr setToCheckEdge = m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, Keynodes::concept_set_to_check, setNode);
   m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, setToCheckEdge);
 
+  ScAddr elementNode;
+
   for (std::string elementContent : elements)
   {
     int checkResult = CheckIfElementIsAlreadyinSet(alreadyCreatedValues, elementContent);
@@ -157,26 +160,28 @@ ScAddr SetParser::CreateElementsInKnowledgeBase(std::vector<std::string> element
       SC_LOG_DEBUG("SetParser: creating edge for element with multiple entrances " + elementContent);
       ScAddr foundNode = GetScAddrOfElement(alreadyCreatedNodes, checkResult);
 
-      if (!m_memoryCtx.HelperCheckEdge(Keynodes::concept_element_with_multiple_entrances, foundNode, ScType::EdgeAccessConstPosPerm))
+      if (CheckIfElementIsAlreadyinSet(nodesWithMultipleEntrances, std::to_string(foundNode.Hash())) != -1)
       {
-        ScAddr edge = m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, Keynodes::concept_element_with_multiple_entrances, foundNode);
-        m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, edge);
+        continue;
       }
 
-      continue;
+      ScAddr edge = m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, Keynodes::concept_element_with_multiple_entrances, foundNode);
+      m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, edge);
+      nodesWithMultipleEntrances.push_back(std::to_string(foundNode.Hash()));
     }
+    else
+    {
+      elementNode = m_memoryCtx.HelperResolveSystemIdtf(elementContent, ScType::NodeConst);
+      alreadyCreatedNodes.push_back(elementNode);
+      alreadyCreatedValues.push_back(elementContent);
 
-    ScAddr elementNode = m_memoryCtx.HelperResolveSystemIdtf(elementContent, ScType::NodeConst);
-   
-    alreadyCreatedNodes.push_back(elementNode);
-    alreadyCreatedValues.push_back(elementContent);
+      ScAddr elementEdge = m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, setNode, elementNode);
 
-    ScAddr elementEdge = m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, setNode, elementNode);
+      m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, elementNode);
+      m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, elementEdge);
 
-    m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, elementNode);
-    m_memoryCtx.CreateEdge(ScType::EdgeAccessConstPosPerm, structNode, elementEdge);
-
-    SC_LOG_DEBUG("SetParser: added element into a set: " + elementContent);
+      SC_LOG_DEBUG("SetParser: added element into a set: " + elementContent);
+    }
   }
 
   m_memoryCtx.Save();
